@@ -1,0 +1,28 @@
+# Credentials and signing material. Nothing in here is ever committed.
+secrets/
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# Build output
+build/
+.gradle/
+dist/
+*.apk
+*.aab
+
+# Generated test media and fixtures
+tools/mock-xtream/media/
+tools/mock-xtream/generated/
+
+# Emulator and verification output
+screenshots/*.png
+!screenshots/.gitkeep
+reports/*.txt
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store

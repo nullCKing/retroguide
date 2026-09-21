@@ -325,8 +325,13 @@ class RetroGuideViewModel(app: Application) : AndroidViewModel(app) {
             val visible = state.channels.subList(first, last)
 
             val programs = container.guideRepository.programsFor(visible, state.cursor.window)
+
+            // Replace rather than merge. Merging would let the map grow by a row's worth of
+            // programmes every time the user scrolls past a channel, so an evening of browsing a
+            // 400-channel guide would accumulate the whole catalogue in memory — exactly what the
+            // windowed query exists to avoid. Only the visible rows plus the buffer are kept.
             _guide.value = _guide.value.copy(
-                programsByKey = _guide.value.programsByKey + programs,
+                programsByKey = programs,
                 nowMs = System.currentTimeMillis(),
             )
             _guide.value = _guide.value.copy(selected = navigator.selected(_guide.value.cursor))
@@ -337,7 +342,7 @@ class RetroGuideViewModel(app: Application) : AndroidViewModel(app) {
                 val filled = container.shortEpgFetcher()?.fillGaps(visible.map { it.streamId }) ?: 0
                 if (filled > 0) {
                     val again = container.guideRepository.programsFor(visible, _guide.value.cursor.window)
-                    _guide.value = _guide.value.copy(programsByKey = _guide.value.programsByKey + again)
+                    _guide.value = _guide.value.copy(programsByKey = again)
                 }
             }.onFailure { Log.d(TAG, "short EPG fallback skipped", it) }
         }

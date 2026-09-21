@@ -15,7 +15,7 @@ import org.junit.Test
 class ChannelFilterTest {
 
     private val filter = ChannelFilter()
-    private var nextId = 1
+    private var nextId = 1L
 
     private fun channel(name: String, categoryName: String? = null): FilterOutcomeWithDetail {
         val category = categoryName?.let { RawCategory("c", it) }

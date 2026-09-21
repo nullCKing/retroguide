@@ -42,7 +42,7 @@ data class RawCategory(
 
 /** A live stream exactly as `get_live_streams` returned it, before any filtering. */
 data class RawChannel(
-    val streamId: Int,
+    val streamId: Long,
     val name: String,
     val categoryId: String?,
     val epgChannelId: String? = null,
@@ -106,7 +106,7 @@ data class FilterDecision(
 
 /** A channel that survived the filter, ready to be written to the database. */
 data class KeptChannel(
-    val streamId: Int,
+    val streamId: Long,
     val originalName: String,
     val displayName: String,
     val country: Country,

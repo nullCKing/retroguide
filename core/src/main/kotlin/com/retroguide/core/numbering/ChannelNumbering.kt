@@ -32,9 +32,9 @@ object ChannelNumbering {
      * The persisted assignment table: `stream_id` to channel number, covering every channel ever
      * seen, not only the ones present now.
      */
-    data class Assignments(val byStreamId: Map<Int, Int>) {
+    data class Assignments(val byStreamId: Map<Long, Int>) {
 
-        fun numberOf(streamId: Int): Int? = byStreamId[streamId]
+        fun numberOf(streamId: Long): Int? = byStreamId[streamId]
 
         companion object {
             val EMPTY = Assignments(emptyMap())

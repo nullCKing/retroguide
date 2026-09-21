@@ -9,7 +9,7 @@ import org.junit.Test
 
 class ChannelNumberingTest {
 
-    private fun ch(id: Int, name: String, country: Country) = KeptChannel(
+    private fun ch(id: Long, name: String, country: Country) = KeptChannel(
         streamId = id,
         originalName = name,
         displayName = name,
@@ -100,7 +100,7 @@ class ChannelNumberingTest {
     @Test
     fun `a full block overflows instead of colliding`() {
         val block = ChannelNumbering.BLOCKS[Country.JP]!!
-        val tooMany = (1..block.count() + 5).map { ch(it, "JP $it", Country.JP) }
+        val tooMany = (1..block.count() + 5).map { ch(it.toLong(), "JP $it", Country.JP) }
         val a = ChannelNumbering.assign(ChannelNumbering.Assignments.EMPTY, tooMany)
         assertEquals("every channel must get a number", tooMany.size, a.byStreamId.size)
         assertEquals("numbers must be unique", tooMany.size, a.byStreamId.values.toSet().size)

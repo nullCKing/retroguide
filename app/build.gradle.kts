@@ -30,22 +30,27 @@ android {
 
     defaultConfig {
         applicationId = "com.retroguide"
-        // Fire OS 6 is API 25, Fire OS 7 is 28, Fire OS 8 is 32. 25 covers every stick still
-        // receiving updates, including the 1 GB Stick Lite this app is tuned for.
-        minSdk = 25
-        targetSdk = 35
+        // minSdk 21 supports Fire OS 5+ (Android 5.0+) and up, covering older Fire Sticks as well as newer models.
+        minSdk = 21
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
         if (hasReleaseKey) {
             create("release") {
                 storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }

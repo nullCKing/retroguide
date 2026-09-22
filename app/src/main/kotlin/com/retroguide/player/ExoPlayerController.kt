@@ -236,6 +236,10 @@ class ExoPlayerController(
         }
 
         override fun onRenderedFirstFrame() {
+            // Fires again every time the output surface changes — the guide's preview window
+            // replacing the full-screen view, for instance — so only the first frame after a
+            // tune is the measurement; the rest would be logged against a stale tune time.
+            if (_state.value.timeToFirstFrameMs != null) return
             val elapsed = System.currentTimeMillis() - tunedAtMs
             Log.i(TAG, "first frame for ${_state.value.channel?.name} in $elapsed ms")
             _state.value = _state.value.copy(

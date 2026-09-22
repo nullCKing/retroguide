@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.TextMeasurer
@@ -277,10 +278,11 @@ private fun DrawScope.drawChannelCell(
     }
 
     // Number over call sign, as every cable guide has done since the 1990s.
+    val numberText = if (channel.isFavorite) "${channel.number} ★" else channel.number.toString()
     val numberLayout = measurer.measure(
-        text = channel.number.toString(),
+        text = numberText,
         style = TextStyle(
-            color = theme.channelNumber,
+            color = if (channel.isFavorite) theme.highlight else theme.channelNumber,
             fontSize = theme.channelNumberSize,
             fontFamily = theme.fontFamily,
             fontWeight = theme.titleWeight,
@@ -375,9 +377,12 @@ private fun DrawScope.drawProgramCell(
                 topLeft = Offset(textLeft, top + (bottom - top - outlineLayout.size.height) / 2f),
             )
         }
+        // Fill is spelled out rather than left null: the measurer caches the paragraph across
+        // both passes, a null drawStyle leaves its paint however the last pass set it, and the
+        // last pass was the stroke — so without this the fill pass draws stroked too.
         val layout = measurer.measure(
             text = cell.slot.title,
-            style = base.copy(color = textColour),
+            style = base.copy(color = textColour, drawStyle = Fill),
             maxLines = theme.cellMaxLines,
             overflow = TextOverflow.Ellipsis,
             constraints = constraints,

@@ -23,11 +23,14 @@ import com.retroguide.data.xtream.XtreamAccount
  * falls back to ordinary preferences and the login screen says the credentials are stored
  * unencrypted, so the user can decide.
  */
-class CredentialStore(context: Context) {
+class CredentialStore(private val context: Context) {
 
     private var encrypted = true
+    private val fallbackPrefs: SharedPreferences by lazy {
+        context.getSharedPreferences(FALLBACK_FILE_NAME, Context.MODE_PRIVATE)
+    }
 
-    private val prefs: SharedPreferences = try {
+    private var prefs: SharedPreferences = try {
         val key = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -48,23 +51,72 @@ class CredentialStore(context: Context) {
     val isEncrypted: Boolean get() = encrypted
 
     fun load(): XtreamAccount? {
-        val server = prefs.getString(KEY_SERVER, null) ?: return null
-        val user = prefs.getString(KEY_USER, null) ?: return null
-        val pass = prefs.getString(KEY_PASS, null) ?: return null
-        if (server.isBlank() || user.isBlank()) return null
-        return XtreamAccount(server, user, pass)
+        // Try encrypted / primary store first
+        try {
+            val server = prefs.getString(KEY_SERVER, null)
+            val user = prefs.getString(KEY_USER, null)
+            val pass = prefs.getString(KEY_PASS, null)
+            if (!server.isNullOrBlank() && !user.isNullOrBlank() && pass != null) {
+                return XtreamAccount(server, user, pass)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to read encrypted credentials; checking fallback", e)
+            encrypted = false
+            prefs = fallbackPrefs
+        }
+
+        // Fallback store
+        try {
+            val server = fallbackPrefs.getString(KEY_SERVER, null) ?: return null
+            val user = fallbackPrefs.getString(KEY_USER, null) ?: return null
+            val pass = fallbackPrefs.getString(KEY_PASS, null) ?: return null
+            if (server.isNotBlank() && user.isNotBlank()) {
+                return XtreamAccount(server, user, pass)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to read fallback preferences", e)
+        }
+        return null
     }
 
     fun save(account: XtreamAccount) {
-        prefs.edit()
-            .putString(KEY_SERVER, account.serverUrl)
-            .putString(KEY_USER, account.username)
-            .putString(KEY_PASS, account.password)
-            .apply()
+        var savedInPrimary = false
+        try {
+            savedInPrimary = prefs.edit()
+                .putString(KEY_SERVER, account.serverUrl)
+                .putString(KEY_USER, account.username)
+                .putString(KEY_PASS, account.password)
+                .commit()
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to save to encrypted preferences, writing to fallback", e)
+            encrypted = false
+            prefs = fallbackPrefs
+        }
+
+        if (!savedInPrimary) {
+            try {
+                fallbackPrefs.edit()
+                    .putString(KEY_SERVER, account.serverUrl)
+                    .putString(KEY_USER, account.username)
+                    .putString(KEY_PASS, account.password)
+                    .commit()
+            } catch (e: Exception) {
+                Log.e(TAG, "failed to save to fallback preferences", e)
+            }
+        }
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        try {
+            prefs.edit().clear().commit()
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to clear primary preferences", e)
+        }
+        try {
+            fallbackPrefs.edit().clear().commit()
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to clear fallback preferences", e)
+        }
     }
 
     private companion object {

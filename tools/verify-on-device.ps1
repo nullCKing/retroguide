@@ -253,8 +253,11 @@ Start-Sleep -Seconds 6
 # ---------------------------------------------------------------------------- driving
 
 function Shot($name) {
+    # Captured on the device and pulled, not redirected: a PowerShell `>` decodes a native
+    # command's output as text and re-encodes it, which turns a PNG into UTF-16 garbage.
     $path = Join-Path $screenshotDir "$name.png"
-    & $adb -s $serial exec-out screencap -p > $path
+    & $adb -s $serial shell screencap -p /sdcard/retroguide_shot.png | Out-Null
+    & $adb -s $serial pull /sdcard/retroguide_shot.png "$path" | Out-Null
     Write-Host "    screenshot: $name.png"
 }
 
@@ -270,6 +273,13 @@ function TypeText($text) {
     & $adb -s $serial shell input text "$escaped" | Out-Null
     Start-Sleep -Milliseconds 400
 }
+
+# The on-screen keyboard opens as soon as a text field has focus and then swallows every D-pad
+# press, so the typed text would all land in the first field. `input text` injects key events
+# and needs no keyboard, so the keyboards are switched off for the run and restored at the end.
+$imes = @(& $adb -s $serial shell ime list -s | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($ime in $imes) { & $adb -s $serial shell ime disable $ime | Out-Null }
+Start-Sleep -Seconds 1
 
 Say "Signing in against the mock server"
 Shot "01_login"
@@ -322,6 +332,11 @@ Key "KEYCODE_DPAD_CENTER"
 Start-Sleep -Seconds 2
 Shot "10_future_program_dialog"
 Key "KEYCODE_BACK"
+# Leave and reopen the guide so it lands on the current half hour and the playing channel, which
+# is where the tune below has to happen. Paging back would need an unknown number of presses:
+# Right skips whole programmes, so the window can be many hours ahead by now.
+Key "KEYCODE_BACK" 1 1.0
+Key "KEYCODE_DPAD_CENTER" 1 2.0
 
 Say "Frame timing while scrolling the guide"
 & $adb -s $serial shell dumpsys gfxinfo $package reset | Out-Null
@@ -339,9 +354,10 @@ if ($total -and $janky) {
 
 Say "Tuning a channel and checking the banner"
 Key "KEYCODE_DPAD_CENTER"
-Start-Sleep -Seconds 4
+# The banner stays up for four seconds; capture it in the middle of that, then after it has gone.
+Start-Sleep -Seconds 2
 Shot "11_banner_after_tune"
-Start-Sleep -Seconds 4
+Start-Sleep -Seconds 5
 Shot "12_banner_hidden"
 
 Say "Channel up and down in full screen"
@@ -358,11 +374,15 @@ Say "Time to first frame, from logcat"
 $logcat = & $adb -s $serial logcat -d -s RetroPlayer:I
 $logcatPath = Join-Path $reportDir "player-log.txt"
 $logcat | Set-Content $logcatPath
-$frames = $logcat | Select-String -Pattern "first frame for .* in (\d+) ms"
-if ($frames) {
-    $times = $frames | ForEach-Object { [int]$_.Matches[0].Groups[1].Value }
+$frames = @($logcat | Select-String -Pattern "first frame for .* in (\d+) ms")
+if ($frames.Count -gt 0) {
+    # Always an array: with a single tune the pipeline would yield a bare Int, which has no
+    # Count under strict mode.
+    $times = @($frames | ForEach-Object { [int]$_.Matches[0].Groups[1].Value })
     $avg = [math]::Round(($times | Measure-Object -Average).Average, 0)
-    Note "- Time to first frame: $($times.Count) tunes, average ${avg} ms, range $($times | Measure-Object -Minimum).Minimum-$(($times | Measure-Object -Maximum).Maximum) ms"
+    $min = ($times | Measure-Object -Minimum).Minimum
+    $max = ($times | Measure-Object -Maximum).Maximum
+    Note "- Time to first frame: $($times.Count) tunes, average ${avg} ms, range ${min}-${max} ms"
 }
 
 Say "Settings screen and an instant filter change"
@@ -376,6 +396,12 @@ Start-Sleep -Milliseconds 500
 $elapsed = (Get-Date) - $before
 Shot "17_settings_filter_changed"
 Note "- Filter toggle round trip (includes key delays): $([math]::Round($elapsed.TotalMilliseconds)) ms"
+# The app times the same thing from the inside, from the toggle to the new channel list arriving.
+$applied = @(& $adb -s $serial logcat -d -s RetroGuideVM:I | Select-String -Pattern "filter change applied in (\d+) ms: (\d+) channels")
+if ($applied.Count -gt 0) {
+    $last = $applied[-1].Matches[0]
+    Note "- Filter change applied in the app: $($last.Groups[1].Value) ms, $($last.Groups[2].Value) channels after the change"
+}
 Key "KEYCODE_BACK"
 Start-Sleep -Seconds 2
 Shot "18_guide_after_filter_change"
@@ -420,6 +446,8 @@ the yellow highlight is legible from a sofa, and whether the cell text is large 
 Set-Content -Path $reportFile -Value ($header + ($script:report -join "`n") + $footer)
 
 # ---------------------------------------------------------------------------- cleanup
+
+foreach ($ime in $imes) { & $adb -s $serial shell ime enable $ime | Out-Null }
 
 if ($mock -and -not $mock.HasExited) {
     Say "Stopping the mock server"

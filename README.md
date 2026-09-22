@@ -16,6 +16,10 @@ precisely so a track selector can be added without touching the UI.
 
 ## Build
 
+You need a JDK 17 or newer and an Android SDK with platform 35 and build-tools 35.0.0, found
+through `ANDROID_HOME` or `local.properties`. Gradle downloads everything else, including the
+JDK 17 toolchain that `core` pins.
+
 ```
 git clone <this repo>
 cd retroguide

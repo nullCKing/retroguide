@@ -128,22 +128,34 @@ private fun InfoPanel(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "ALL CHANNELS",
+                text = state.categoryName.uppercase(),
                 color = theme.infoDetail,
                 fontSize = theme.sectionSize,
                 fontFamily = theme.fontFamily,
             )
             Spacer(Modifier.height(8.dp))
 
-            Text(
-                text = slot?.title ?: "—",
-                color = theme.infoTitle,
-                fontSize = theme.titleSize,
-                fontFamily = theme.fontFamily,
-                fontWeight = theme.titleWeight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!channel?.logoUrl.isNullOrBlank()) {
+                    coil.compose.AsyncImage(
+                        model = channel?.logoUrl,
+                        contentDescription = channel?.name,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .padding(end = 8.dp),
+                    )
+                }
+                Text(
+                    text = slot?.title ?: "—",
+                    color = theme.infoTitle,
+                    fontSize = theme.titleSize,
+                    fontFamily = theme.fontFamily,
+                    fontWeight = theme.titleWeight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(4.dp))
 
             // Rating • start-end • "description", wrapping over several lines, as in the reference.
@@ -196,7 +208,10 @@ private fun InfoPanel(
 private fun buildDetailLine(slot: ProgramSlot?, channel: GuideChannel?): String {
     if (slot == null) return ""
     val parts = ArrayList<String>(4)
-    channel?.let { parts.add("${it.number} ${it.shortName}") }
+    channel?.let {
+        val fav = if (it.isFavorite) " ★" else ""
+        parts.add("${it.number} ${it.shortName}$fav")
+    }
     slot.rating?.takeIf { it.isNotBlank() }?.let(parts::add)
     parts.add(timeRange(slot.startMs, slot.endMs))
     val head = parts.joinToString("  •  ")

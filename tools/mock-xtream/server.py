@@ -210,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_api(params)
             elif parsed.path == "/xmltv.php":
                 self.handle_xmltv(params)
-            elif parsed.path.startswith("/live/"):
+            elif parsed.path.startswith("/live/") or parsed.path.startswith("/movie/") or parsed.path.startswith("/series/"):
                 self.handle_live(parsed.path)
             elif parsed.path == "/_truth":
                 self.handle_truth()
@@ -255,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json([fixtures.public_channel_view(c) for c in channels])
             return
 
-        if action == "get_short_epg":
+        if action in ("get_short_epg", "get_simple_data_table"):
             sid = params.get("stream_id", [None])[0]
             limit = int(params.get("limit", ["4"])[0])
             channel = _catalog.by_id.get(int(sid)) if sid and sid.isdigit() else None
@@ -265,10 +265,108 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"epg_listings": epg_mod.short_epg_for(channel, limit)})
             return
 
-        if action in ("get_vod_categories", "get_series_categories",
-                      "get_vod_streams", "get_series"):
-            # Out of scope for this build; a real panel still answers.
-            self._json([])
+        if action == "get_vod_categories":
+            self._json([
+                {"category_id": "1", "category_name": "Action & Adventure"},
+                {"category_id": "2", "category_name": "Sci-Fi & Fantasy"},
+                {"category_id": "3", "category_name": "Classic Cinema"},
+            ])
+            return
+
+        if action == "get_vod_streams":
+            cid = params.get("category_id", ["1"])[0]
+            self._json([
+                {
+                    "stream_id": 9001,
+                    "name": "The Long Afternoon",
+                    "category_id": cid,
+                    "stream_icon": "https://picsum.photos/300/450",
+                    "rating": "8.4",
+                    "container_extension": "mp4",
+                },
+                {
+                    "stream_id": 9002,
+                    "name": "Salt and Iron",
+                    "category_id": cid,
+                    "stream_icon": "https://picsum.photos/300/450",
+                    "rating": "7.9",
+                    "container_extension": "mp4",
+                },
+            ])
+            return
+
+        if action == "get_vod_info":
+            vid = int(params.get("vod_id", ["9001"])[0])
+            self._json({
+                "info": {
+                    "name": "The Long Afternoon",
+                    "description": "A long-running favourite returns with an episode that ties up more than it opens.",
+                    "duration": "108",
+                    "releasedate": "2024-05-12",
+                    "rating": "8.4",
+                    "cast": "John Doe, Jane Smith",
+                    "director": "Alan Smithee",
+                    "cover_big": "https://picsum.photos/300/450",
+                },
+                "movie_data": {
+                    "stream_id": vid,
+                    "name": "The Long Afternoon",
+                    "container_extension": "mp4",
+                },
+            })
+            return
+
+        if action == "get_series_categories":
+            self._json([
+                {"category_id": "10", "category_name": "Drama Series"},
+                {"category_id": "11", "category_name": "Documentary Series"},
+            ])
+            return
+
+        if action == "get_series":
+            cid = params.get("category_id", ["10"])[0]
+            self._json([
+                {
+                    "series_id": 8001,
+                    "name": "The Auditors",
+                    "category_id": cid,
+                    "cover": "https://picsum.photos/300/450",
+                    "plot": "The team faces its toughest test of the season.",
+                    "rating": "8.9",
+                    "releaseDate": "2023-09-01",
+                },
+            ])
+            return
+
+        if action == "get_series_info":
+            sid = int(params.get("series_id", ["8001"])[0])
+            self._json({
+                "info": {
+                    "name": "The Auditors",
+                    "cover": "https://picsum.photos/300/450",
+                    "plot": "The investigation turns up a detail that changes the shape of the whole case.",
+                },
+                "seasons": [
+                    {"season_number": 1},
+                    {"season_number": 2},
+                ],
+                "episodes": {
+                    "1": [
+                        {
+                            "id": 8101,
+                            "episode_num": 1,
+                            "title": "Pilot",
+                            "container_extension": "mp4",
+                        },
+                        {
+                            "id": 8102,
+                            "episode_num": 2,
+                            "title": "Second Shift",
+                            "container_extension": "mp4",
+                        },
+                    ],
+                },
+            })
             return
 
         self._json({"error": "unknown action"}, 400)

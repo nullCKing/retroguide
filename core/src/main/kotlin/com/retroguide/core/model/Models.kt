@@ -60,6 +60,7 @@ data class CategoryVerdict(
     val market: Market?,
     /** A country outside the allowlist named by the category, e.g. the `DE` in `DE | SPORT`. */
     val foreignMarker: String? = null,
+    val isStreamingService: Boolean = false,
     val evidence: List<String> = emptyList(),
 ) {
     /**
@@ -72,6 +73,7 @@ data class CategoryVerdict(
      * names may carry the country individually.
      */
     fun mayContainKeptChannels(rules: FilterRules): Boolean {
+        if (isStreamingService) return false
         if (country == null) return foreignMarker == null
         if (country !in rules.countries) return false
         if (country == Country.US && market != null && market !in rules.markets) return false
@@ -141,3 +143,60 @@ data class FilterRules(
         val DEFAULT = FilterRules()
     }
 }
+
+/** A movie (VOD) item from `get_vod_streams`. */
+data class RawVodStream(
+    val streamId: Long,
+    val name: String,
+    val categoryId: String?,
+    val streamIcon: String? = null,
+    val rating: String? = null,
+    val containerExtension: String? = null,
+)
+
+/** Detailed movie information from `get_vod_info`. */
+data class RawVodInfo(
+    val streamId: Long,
+    val name: String,
+    val description: String? = null,
+    val duration: String? = null,
+    val releaseDate: String? = null,
+    val rating: String? = null,
+    val cast: String? = null,
+    val director: String? = null,
+    val coverUrl: String? = null,
+    val backdropUrl: String? = null,
+    val containerExtension: String? = null,
+)
+
+/** A TV Series item from `get_series`. */
+data class RawSeries(
+    val seriesId: Long,
+    val name: String,
+    val categoryId: String?,
+    val cover: String? = null,
+    val plot: String? = null,
+    val rating: String? = null,
+    val releaseDate: String? = null,
+)
+
+/** One episode in a season from `get_series_info`. */
+data class RawEpisode(
+    val id: Long,
+    val season: Int,
+    val episodeNum: Int,
+    val title: String,
+    val containerExtension: String? = null,
+    val info: String? = null,
+)
+
+/** Detailed series information and episode list from `get_series_info`. */
+data class RawSeriesInfo(
+    val seriesId: Long,
+    val name: String,
+    val cover: String? = null,
+    val plot: String? = null,
+    val seasons: List<Int> = emptyList(),
+    val episodes: Map<Int, List<RawEpisode>> = emptyMap(),
+)
+

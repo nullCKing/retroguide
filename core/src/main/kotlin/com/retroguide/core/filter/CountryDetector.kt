@@ -26,7 +26,7 @@ object CountryDetector {
             "UNITED KINGDOM", "GREAT BRITAIN", "UK", "GB", "GBR", "BRITAIN", "ENGLAND",
         ).map(::phrase),
         Country.JP to listOf("JAPAN", "JPN", "JP").map(::phrase),
-        Country.KR to listOf("SOUTH KOREA", "KOREA", "KOR", "KR").map(::phrase),
+        Country.KR to listOf("SOUTH KOREA", "KOREA", "KOR", "KR", "SK").map(::phrase),
     )
 
     /**
@@ -38,7 +38,7 @@ object CountryDetector {
             "LATIN AMERICA", "SOUTH AMERICA", "CENTRAL AMERICA", "AMERICA LATINA",
             "LATINO AMERICA", "AMERICA TV", "AMERICAS",
         ).map(::phrase),
-        Country.KR to listOf("NORTH KOREA", "KOREA DPR", "DPRK").map(::phrase),
+        Country.KR to listOf("NORTH KOREA", "KOREA DPR", "DPRK", "SLOVAKIA", "SLOVAK", "SVK").map(::phrase),
         Country.UK to listOf("NEW ENGLAND").map(::phrase),
         Country.JP to emptyList(),
     )
@@ -47,7 +47,7 @@ object CountryDetector {
      * Tokens weak enough that they are only trusted in prefix position. `US` and `GB` are real
      * English words or abbreviations that turn up mid-title; `USA` or `JAPAN` are not.
      */
-    private val PREFIX_ONLY: Set<String> = setOf("US", "GB", "KR", "JP", "AMERICA")
+    private val PREFIX_ONLY: Set<String> = setOf("US", "GB", "KR", "JP", "AMERICA", "SK")
 
     /** Result of a single-string lookup. */
     data class Hit(val country: Country, val token: String, val inPrefix: Boolean)

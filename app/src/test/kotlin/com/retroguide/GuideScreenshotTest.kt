@@ -42,7 +42,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [33], qualifiers = "w960dp-h540dp-xhdpi-television-land")
+@Config(sdk = [33], qualifiers = "w960dp-h540dp-land-television-xhdpi")
 class GuideScreenshotTest {
 
     @get:Rule

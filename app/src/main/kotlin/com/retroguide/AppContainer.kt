@@ -32,6 +32,31 @@ class AppContainer(context: Context) {
     val credentials = CredentialStore(appContext)
     val guideRepository = GuideRepository(database)
 
+    val imageLoader: coil.ImageLoader by lazy {
+        coil.ImageLoader.Builder(appContext)
+            .okHttpClient(httpClient)
+            .memoryCache {
+                coil.memory.MemoryCache.Builder(appContext)
+                    .maxSizePercent(0.10)
+                    .build()
+            }
+            .diskCache {
+                coil.disk.DiskCache.Builder()
+                    .directory(appContext.cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(50L * 1024 * 1024)
+                    .build()
+            }
+            .crossfade(false)
+            .respectCacheHeaders(false)
+            .build()
+            .also { coil.Coil.setImageLoader(it) }
+    }
+
+    init {
+        // Warm up ImageLoader
+        imageLoader
+    }
+
     /** The one and only player. */
     val player: ExoPlayerController by lazy { ExoPlayerController(appContext, httpClient) }
 

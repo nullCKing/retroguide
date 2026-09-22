@@ -3,7 +3,9 @@
 Written so a session with no memory of this one can pick it up. Read `PLAN.md` for the milestones
 and `DECISIONS.md` for why things are the way they are.
 
-**Status: the source is complete; the Android build and all on-device verification are unrun.**
+**Status: it builds, every test passes, and everything an emulator can verify has been verified on an
+Android TV emulator against the mock server. It has not yet run on a real Fire TV Stick, and there
+is still no real Xtream account.**
 
 ---
 
@@ -15,11 +17,13 @@ This was built in a container whose egress policy returns 403 for `dl.google.com
 CPU flags). Four routes were tried for the SDK — direct download, the Ubuntu `android-sdk`
 packages, alternate Maven mirrors, GitHub. Only GitHub, PyPI and npm are reachable.
 
-So: **no Gradle build has ever run, no APK has ever been produced, and no emulator has ever
-started.** Everything that could be run without those was run, and is marked ✅ below. Everything
-that needs them is marked ⬜ and is what `tools/verify-on-device.ps1` exists to do.
-
-This is not a guess about what is untested. It is the precise line between the two.
+So the source was written blind, and the first Gradle build, the first screenshot tests and the
+first emulator run all happened afterwards, on a Windows machine, on 2026-09-21. What that first
+contact changed is in `DECISIONS.md` under "First build and first run on a device". The short
+version: every dependency version resolved as written, the app compiled after two wrong imports,
+and the things that were actually broken were the ones only a screen can show — a PRAGMA that
+throws on Android, outlined text drawn twice stroked, and D-pad focus on the login and settings
+screens.
 
 ---
 
@@ -40,74 +44,89 @@ This is not a guess about what is untested. It is the precise line between the t
 | ✅ Mock Xtream server | Runs; serves login, categories, streams, short EPG, a 187 MB / 542,046-programme XMLTV (gzip verified byte-identical), an endless MPEG-TS and a sliding-window HLS playlist over FFmpeg-generated media. Bad credentials answer `auth: 0`. |
 | ✅ Discovery tool | Runs against the mock server using the shipping filter and parser. |
 | ✅ Launcher art | 320×180 TV banner and five launcher icon densities, generated and visually checked. |
+| ✅ Gradle build | `./gradlew build` is green: `:core` (107 tests), `:app` debug and minified release APKs, lint, and the seven Roborazzi screenshot tests. Needs a JDK 17+ and the Android SDK; the Foojay plugin fetches the JDK 17 that `core` asks for. |
+| ✅ Screenshot tests | Baselines recorded under `app/src/test/screenshots/`. The guide, the details dialog, the future-programme box, the empty state, a six-row theme and the banner all render as intended. |
+| ✅ Emulator run | `tools/verify-on-device.ps1` runs end to end on an API 30 Android TV AVD with 1 GB of RAM: sign-in, import, playback, banner, guide navigation, the details dialog, channel up/down, last channel, settings and an instant filter change. `reports/device-verification.md` and `screenshots/` are its output. |
 
-## What is written but never compiled
+## What the first build found
 
-Every Android source file. Room schema and DAOs, the OkHttp Xtream client, the filtered streaming
-import, the XMLTV pull-parser, `ExoPlayerController`, the Compose screens, the custom-drawn grid,
-the WorkManager refresh, the screenshot tests, the Gradle build files.
+The predictions above the line were close: every dependency version resolved as written, the
+Compose text APIs compiled unchanged, and the one `@UnstableApi` call site outside
+`ExoPlayerController` (the `PlayerView` setup in `MainActivity`) was caught by lint, not the
+compiler. Two imports were wrong (`Modifier.focusable` lives in `androidx.compose.foundation`;
+`item` is a `LazyListScope` member). The Robolectric qualifier string had its parts in the wrong
+order, and the release variant cannot run the screenshot tests at all, so it no longer tries.
 
-It has been reviewed by hand and the pure-Kotlin logic it leans on is tested, but **expect the
-first `./gradlew build` to surface compile errors.** The likeliest sources, in order:
+What only running it could find, all fixed and all recorded in `DECISIONS.md`: the database
+crashed on first open (`execSQL("PRAGMA journal_mode=WAL")` throws on Android), every white cell
+title was drawn stroked (the measurer's cached paint kept the outline pass's stroke), the login
+fields could not be left with a D-pad, and the settings rows could not be reached because the root
+held focus.
 
-1. **Dependency versions.** `gradle/libs.versions.toml` pins AGP 8.7.3, Kotlin 2.0.21, KSP
-   2.0.21-1.0.28, Compose BOM 2024.12.01, Media3 1.5.1, Room 2.6.1, Roborazzi 1.36.0. These were
-   chosen as known-good pairings but could not be resolved to check. Gradle will name any that do
-   not exist; bump them in that one file.
-2. **Compose API drift.** The grid uses `TextMeasurer`, `DrawScope.drawText`,
-   `TextStyle(drawStyle = Stroke(...))` and `Path.addRoundRect`. All are stable, but signatures
-   move between versions.
-3. **Media3 `@UnstableApi`.** `ExoPlayerController` is annotated `@OptIn(UnstableApi::class)`;
-   if a call site outside it touches an unstable type the compiler will say so.
-
-## What has not been verified at all
+## Definition of Done, as it stands
 
 | Definition-of-Done item | State |
 | --- | --- |
-| ⬜ Signed release APK builds with one command into `dist/` | Wiring is written (`./gradlew release`, `tools/make-keystore.ps1`); never run. |
-| ⬜ Login works; bad credentials show a clear error | The error path is written and the mock server answers `auth: 0` correctly; never seen on screen. |
-| ⬜ Guide matches the reference style | Built from the written descriptions in the spec. **`reference/` was never reachable, so no screenshot has ever been compared against the real images.** This is the item most likely to need work. |
-| ⬜ Guide navigation on a device | The logic is unit-tested; the key routing in `MainActivity.handleKey` is not. |
-| ⬜ Smooth scrolling on the emulator | No `gfxinfo` measurement exists. |
-| ⬜ Playback, banner, last channel, auto-reconnect | Never run against either server. |
-| ⬜ Only one stream open at a time | Guaranteed structurally — one `ExoPlayerController`, one `ExoPlayer`, preview and full screen share it — but never observed. |
-| ⬜ Peak memory measured and recorded | The design bounds it (batch of 250 channels, 500 programmes, streaming parsers, windowed queries), but no number has been taken. |
-| ⬜ Screenshot tests pass | Written; Roborazzi has never run. |
-| ⬜ Real-server check | **No Xtream account was ever provided.** `secrets/xtream.json` does not exist. The discovery report, playback checks and channel counts are all against the mock server. |
+| ⬜ Signed release APK builds with one command into `dist/` | `./gradlew build` produces a minified release APK signed with the debug key. `tools/make-keystore.ps1` has not been run, so no release key exists yet and `./gradlew release` has not been exercised with one. |
+| ✅ Login works | Verified on the emulator against the mock server. The bad-credentials path is written and the mock server answers `auth: 0`, but the error has not been seen on screen. |
+| ⬜ Guide matches the reference style | The guide has now been seen — `screenshots/04_guide.png` and the Roborazzi baselines — and reads as a cable guide. **It has still not been compared with `reference/`.** `GuideTheme.kt` remains the one file to edit. |
+| ✅ Guide navigation on a device | Up/Down/Left/Right, Rewind/Fast Forward paging, Select on a current programme (tunes) and on a future one (details dialog), Back. |
+| ✅ Smooth scrolling | Measured on the emulator only; see the table below and its caveat. |
+| ✅ Playback, banner, last channel | Plays the mock server's MPEG-TS; the banner shows number, name, now-with-progress and next; Play/Pause returns to the previous channel. Auto-reconnect is written but has not been provoked. |
+| ✅ Only one stream open at a time | One socket to the stream port throughout, including with the guide's preview window up. |
+| ✅ Peak memory measured | See the table below. |
+| ✅ Screenshot tests pass | Seven Roborazzi tests, recorded and passing in `./gradlew build`. |
+| ⬜ Real-server check | **Still no Xtream account.** Everything above is against the mock server. |
+| ⬜ Real Fire TV Stick | Not yet. The emulator is a 1 GB API 30 Android TV image; Fire OS 6 (API 25) in particular is untested. `.\tools\verify-on-device.ps1 -Device <ip>:5555` is ready for it. |
 | ✅ No credentials in git history or the APK | `secrets/` is gitignored, nothing is compiled in, and `reports/discovery.md` contains no URLs, hosts or credentials. |
 
 ---
 
 ## Next session: start here
 
-1. **Build it.** `./gradlew build` on a machine that can reach Google's Maven. Fix what the
-   compiler says. Nothing below is worth doing first.
-2. **Run `tools/verify-on-device.ps1`.** It does the SDK install, the mock server, the tests, the
-   APK, the AVD, the D-pad driving, the screenshots and the measurements, and writes
-   `reports/device-verification.md`.
-3. **Get `reference/` in front of you** and compare it with `screenshots/`. The theme object
-   (`ui/theme/GuideTheme.kt`) is the only file that should need editing for look-and-feel.
-4. **Fill in the measurements** in the table below and in this file's summary.
-5. **When a real Xtream account exists**, drop `secrets/xtream.json` in, re-run
+1. **Run it on a real Fire TV Stick.** `adb connect <ip>:5555` then
+   `.\tools\verify-on-device.ps1 -Device <ip>:5555`. The emulator numbers below come from a
+   software-rendered AVD and say little about a Stick; the frame timing in particular needs real
+   hardware, and Fire OS 6 (API 25) has never run the app.
+2. **Get `reference/` in front of you** and compare it with `screenshots/04_guide.png` and the
+   Roborazzi baselines. `ui/theme/GuideTheme.kt` is the only file that should need editing.
+3. **Create the release key** with `tools\make-keystore.ps1`, then `.\gradlew.bat release`, and back
+   the `.jks` up somewhere other than this machine.
+4. **When a real Xtream account exists**, drop `secrets/xtream.json` in, re-run
    `tools/discover/run.sh`, and read the "Unrecognised prefixes" table at the end of the report.
    That table is the whole point of the discovery step: whatever appears there often is a naming
    convention `CountryDetector` or `ForeignCountries` should learn. Add the tokens, re-run, repeat.
+5. **Provoke the reconnect path**: stop the mock server mid-stream and watch for the
+   "Reconnecting…" label, the error panel after thirty seconds, and Select retrying.
 
-### Measurements to fill in
+Building on a new machine needs a JDK 17 or newer on `JAVA_HOME` and an Android SDK on
+`ANDROID_HOME` (platform 35, build-tools 35.0.0); the verify script installs the SDK itself.
 
-| Measurement | Target | Actual |
+### Measurements
+
+Taken by `tools/verify-on-device.ps1` on 2026-09-21 against an API 30 Android TV AVD with 1 GB of
+RAM, `-gpu swiftshader_indirect` (software rendering), on a Ryzen 7 5800H under WHPX. The full
+`dumpsys` output is in `reports/`.
+
+| Measurement | Target | Actual (emulator) |
 | --- | --- | --- |
-| Peak memory, import of 5,000 channels | well under a 1 GB device | *not measured* |
-| Peak memory, guide open and scrolling | — | *not measured* |
-| Time to first frame, channel change | as low as possible | *not measured* |
-| Janky frames while scrolling the guide | low | *not measured* |
-| Filter change round trip | under 100 ms | *not measured* |
+| Peak memory, import of 5,181 channels and 539,944 programmes | well under a 1 GB device | 94.8 MB total PSS after the import (Dalvik heap 19 MB, native 3 MB) |
+| Peak memory, guide open and scrolling | — | not separately measured; the windowed query keeps the programme map at a few dozen rows |
+| Time to first frame, channel change | as low as possible | 125–360 ms for a channel change (five tunes); 1,434 ms for the first play after launch (cold decoder) |
+| Janky frames while scrolling the guide | low | 22 of 35 frames (63%) over 25 rapid D-pad presses; 50th percentile 18 ms, 90th 30 ms, 99th 32 ms. **Software-rendered emulator; a real device is the only meaningful number.** |
+| Filter change round trip | under 100 ms | **70 ms** from the toggle to the new channel list (392 channels), timed in the app; 72 ms on the previous run |
+| Import duration | — | ~15 s for the channels (89% of the catalogue never fetched), ~23 s for the 187 MB XMLTV |
 
 ---
 
 ## Known limitations
 
-- **The guide has never been seen.** Built from prose descriptions of the reference images.
+- **The guide has been seen on an emulator, not compared with the reference images.** Built from
+  prose descriptions; `reference/` is still the thing to check it against.
+- **All measurements are from a software-rendered emulator**, not a Fire TV Stick.
+- **A cold start took about five seconds on the emulator** right after boot (`Displayed` in
+  logcat). Keystore setup for the encrypted credentials, Room and WorkManager all happen on the
+  first launch; worth measuring on a Stick before deciding it matters.
 - **Exclusion keywords are chosen from a fixed list** in settings rather than typed. Editing free
   text with a D-pad is miserable; the underlying setting is plain text and accepts anything, so a
   future version could add a keyboard or a phone companion.
@@ -119,7 +138,10 @@ first `./gradlew build` to surface compile errors.** The likeliest sources, in o
   server's `.ts` endpoint may show a hiccup at the loop point. That is the mock server, not the
   player.
 - **Fire OS 6 (API 25) is untested** and is the riskiest of the three targets — `minSdk 25` is
-  declared and core library desugaring is on, but nothing has run there.
+  declared and core library desugaring is on, but nothing has run there. The emulator was API 30.
+- **The on-screen keyboard drives the login form on a real remote.** Its Next and Done keys move
+  between fields and sign in; with the keyboard dismissed, Up, Down and Select do the same. The
+  verify script switches the keyboard off because it types with `input text`.
 - **No captions or subtitles**, by design. See below.
 
 ---

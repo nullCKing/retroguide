@@ -194,40 +194,325 @@ object XtreamParser {
     fun parseShortEpg(reader: Reader): List<ShortEpgEntry> {
         val out = ArrayList<ShortEpgEntry>(8)
         JsonReader(reader).use { json ->
-            if (json.peek() != JsonReader.Token.BEGIN_OBJECT) return emptyList()
+            val token = json.peek()
+            if (token == JsonReader.Token.BEGIN_OBJECT) {
+                json.beginObject()
+                while (json.hasNext()) {
+                    val name = json.nextName()
+                    if (name == "epg_listings") {
+                        if (json.peek() == JsonReader.Token.BEGIN_ARRAY) {
+                            parseEpgArray(json, out)
+                        } else {
+                            json.skipValue()
+                        }
+                    } else {
+                        json.skipValue()
+                    }
+                }
+                json.endObject()
+            } else if (token == JsonReader.Token.BEGIN_ARRAY) {
+                parseEpgArray(json, out)
+            }
+        }
+        return out
+    }
+
+    private fun parseEpgArray(json: JsonReader, out: MutableList<ShortEpgEntry>) {
+        json.beginArray()
+        while (json.hasNext()) {
+            json.beginObject()
+            var title = ""
+            var desc = ""
+            var start = 0L
+            var stop = 0L
+            var startStr: String? = null
+            var endStr: String? = null
+            while (json.hasNext()) {
+                when (json.nextName()) {
+                    "title" -> title = json.nextString().orEmpty()
+                    "description" -> desc = json.nextString().orEmpty()
+                    "start_timestamp" -> start = json.nextLong()
+                    "stop_timestamp" -> stop = json.nextLong()
+                    "start" -> startStr = json.nextString()
+                    "end" -> endStr = json.nextString()
+                    else -> json.skipValue()
+                }
+            }
+            json.endObject()
+            if (start == 0L && startStr != null) start = parseTimestamp(startStr)
+            if (stop == 0L && endStr != null) stop = parseTimestamp(endStr)
+            if (stop > start) out.add(ShortEpgEntry(title, desc, start, stop))
+        }
+        json.endArray()
+    }
+
+    private fun parseTimestamp(text: String): Long {
+        text.toLongOrNull()?.let { return it }
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            sdf.parse(text)?.time?.div(1000L) ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    /** Parses VOD stream items from `get_vod_streams`. */
+    fun parseVodStreams(reader: Reader): List<com.retroguide.core.model.RawVodStream> {
+        val out = ArrayList<com.retroguide.core.model.RawVodStream>(64)
+        JsonReader(reader).use { json ->
+            if (json.peek() != JsonReader.Token.BEGIN_ARRAY) return emptyList()
+            json.beginArray()
+            while (json.hasNext()) {
+                json.beginObject()
+                var streamId = 0L
+                var name = ""
+                var categoryId: String? = null
+                var icon: String? = null
+                var rating: String? = null
+                var extension: String? = null
+                while (json.hasNext()) {
+                    when (json.nextName()) {
+                        "stream_id", "vod_id" -> streamId = json.nextLong()
+                        "name" -> name = json.nextString().orEmpty()
+                        "category_id" -> categoryId = json.nextString()
+                        "stream_icon" -> icon = json.nextString()
+                        "rating", "rating_5based" -> rating = json.nextString()
+                        "container_extension" -> extension = json.nextString()
+                        else -> json.skipValue()
+                    }
+                }
+                json.endObject()
+                if (streamId != 0L && name.isNotBlank()) {
+                    out.add(com.retroguide.core.model.RawVodStream(streamId, name, categoryId, icon, rating, extension))
+                }
+            }
+            json.endArray()
+        }
+        return out
+    }
+
+    /** Parses detailed movie info from `get_vod_info`. */
+    fun parseVodInfo(reader: Reader, defaultVodId: Long): com.retroguide.core.model.RawVodInfo {
+        var streamId = defaultVodId
+        var name = ""
+        var desc: String? = null
+        var duration: String? = null
+        var releaseDate: String? = null
+        var rating: String? = null
+        var cast: String? = null
+        var director: String? = null
+        var cover: String? = null
+        var backdrop: String? = null
+        var extension: String? = null
+
+        JsonReader(reader).use { json ->
+            if (json.peek() != JsonReader.Token.BEGIN_OBJECT) {
+                return com.retroguide.core.model.RawVodInfo(defaultVodId, "")
+            }
             json.beginObject()
             while (json.hasNext()) {
-                if (json.nextName() != "epg_listings") {
-                    json.skipValue()
-                    continue
-                }
-                if (json.peek() != JsonReader.Token.BEGIN_ARRAY) {
-                    json.skipValue()
-                    continue
-                }
-                json.beginArray()
-                while (json.hasNext()) {
-                    json.beginObject()
-                    var title = ""
-                    var desc = ""
-                    var start = 0L
-                    var stop = 0L
-                    while (json.hasNext()) {
-                        when (json.nextName()) {
-                            "title" -> title = json.nextString().orEmpty()
-                            "description" -> desc = json.nextString().orEmpty()
-                            "start_timestamp" -> start = json.nextLong()
-                            "stop_timestamp" -> stop = json.nextLong()
-                            else -> json.skipValue()
-                        }
+                when (json.nextName()) {
+                    "info" -> {
+                        if (json.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                            json.beginObject()
+                            while (json.hasNext()) {
+                                when (json.nextName()) {
+                                    "name" -> name = json.nextString().orEmpty()
+                                    "description", "plot" -> desc = json.nextString()
+                                    "duration", "duration_secs" -> duration = json.nextString()
+                                    "releasedate", "release_date" -> releaseDate = json.nextString()
+                                    "rating" -> rating = json.nextString()
+                                    "cast", "actors" -> cast = json.nextString()
+                                    "director" -> director = json.nextString()
+                                    "cover_big", "movie_image" -> cover = json.nextString()
+                                    "backdrop_path" -> {
+                                        if (json.peek() == JsonReader.Token.BEGIN_ARRAY) {
+                                            json.beginArray()
+                                            if (json.hasNext()) backdrop = json.nextString()
+                                            while (json.hasNext()) json.skipValue()
+                                            json.endArray()
+                                        } else {
+                                            backdrop = json.nextString()
+                                        }
+                                    }
+                                    else -> json.skipValue()
+                                }
+                            }
+                            json.endObject()
+                        } else json.skipValue()
                     }
-                    json.endObject()
-                    if (stop > start) out.add(ShortEpgEntry(title, desc, start, stop))
+                    "movie_data" -> {
+                        if (json.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                            json.beginObject()
+                            while (json.hasNext()) {
+                                when (json.nextName()) {
+                                    "stream_id" -> streamId = json.nextLong()
+                                    "name" -> if (name.isBlank()) name = json.nextString().orEmpty() else json.skipValue()
+                                    "container_extension" -> extension = json.nextString()
+                                    else -> json.skipValue()
+                                }
+                            }
+                            json.endObject()
+                        } else json.skipValue()
+                    }
+                    else -> json.skipValue()
                 }
-                json.endArray()
             }
             json.endObject()
         }
+        return com.retroguide.core.model.RawVodInfo(
+            streamId = streamId,
+            name = name,
+            description = desc,
+            duration = duration,
+            releaseDate = releaseDate,
+            rating = rating,
+            cast = cast,
+            director = director,
+            coverUrl = cover,
+            backdropUrl = backdrop,
+            containerExtension = extension,
+        )
+    }
+
+    /** Parses series list from `get_series`. */
+    fun parseSeries(reader: Reader): List<com.retroguide.core.model.RawSeries> {
+        val out = ArrayList<com.retroguide.core.model.RawSeries>(64)
+        JsonReader(reader).use { json ->
+            if (json.peek() != JsonReader.Token.BEGIN_ARRAY) return emptyList()
+            json.beginArray()
+            while (json.hasNext()) {
+                json.beginObject()
+                var seriesId = 0L
+                var name = ""
+                var categoryId: String? = null
+                var cover: String? = null
+                var plot: String? = null
+                var rating: String? = null
+                var releaseDate: String? = null
+                while (json.hasNext()) {
+                    when (json.nextName()) {
+                        "series_id" -> seriesId = json.nextLong()
+                        "name" -> name = json.nextString().orEmpty()
+                        "category_id" -> categoryId = json.nextString()
+                        "cover" -> cover = json.nextString()
+                        "plot" -> plot = json.nextString()
+                        "rating", "rating_5based" -> rating = json.nextString()
+                        "releaseDate", "release_date" -> releaseDate = json.nextString()
+                        else -> json.skipValue()
+                    }
+                }
+                json.endObject()
+                if (seriesId != 0L && name.isNotBlank()) {
+                    out.add(com.retroguide.core.model.RawSeries(seriesId, name, categoryId, cover, plot, rating, releaseDate))
+                }
+            }
+            json.endArray()
+        }
         return out
+    }
+
+    /** Parses series info, seasons and episodes from `get_series_info`. */
+    fun parseSeriesInfo(reader: Reader, defaultSeriesId: Long): com.retroguide.core.model.RawSeriesInfo {
+        var name = ""
+        var cover: String? = null
+        var plot: String? = null
+        val seasons = ArrayList<Int>()
+        val episodes = LinkedHashMap<Int, ArrayList<com.retroguide.core.model.RawEpisode>>()
+
+        JsonReader(reader).use { json ->
+            if (json.peek() != JsonReader.Token.BEGIN_OBJECT) {
+                return com.retroguide.core.model.RawSeriesInfo(defaultSeriesId, "")
+            }
+            json.beginObject()
+            while (json.hasNext()) {
+                when (json.nextName()) {
+                    "info" -> {
+                        if (json.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                            json.beginObject()
+                            while (json.hasNext()) {
+                                when (json.nextName()) {
+                                    "name" -> name = json.nextString().orEmpty()
+                                    "cover" -> cover = json.nextString()
+                                    "plot" -> plot = json.nextString()
+                                    else -> json.skipValue()
+                                }
+                            }
+                            json.endObject()
+                        } else json.skipValue()
+                    }
+                    "seasons" -> {
+                        if (json.peek() == JsonReader.Token.BEGIN_ARRAY) {
+                            json.beginArray()
+                            while (json.hasNext()) {
+                                json.beginObject()
+                                while (json.hasNext()) {
+                                    if (json.nextName() == "season_number") {
+                                        val sn = json.nextInt()
+                                        if (sn !in seasons) seasons.add(sn)
+                                    } else {
+                                        json.skipValue()
+                                    }
+                                }
+                                json.endObject()
+                            }
+                            json.endArray()
+                        } else json.skipValue()
+                    }
+                    "episodes" -> {
+                        if (json.peek() == JsonReader.Token.BEGIN_OBJECT) {
+                            json.beginObject()
+                            while (json.hasNext()) {
+                                val seasonKey = json.nextName()
+                                val seasonNum = seasonKey.toIntOrNull() ?: 1
+                                if (seasonNum !in seasons) seasons.add(seasonNum)
+                                val list = episodes.getOrPut(seasonNum) { ArrayList() }
+
+                                if (json.peek() == JsonReader.Token.BEGIN_ARRAY) {
+                                    json.beginArray()
+                                    while (json.hasNext()) {
+                                        json.beginObject()
+                                        var epId = 0L
+                                        var epNum = 0
+                                        var epTitle = ""
+                                        var ext: String? = null
+                                        while (json.hasNext()) {
+                                            when (json.nextName()) {
+                                                "id" -> epId = json.nextLong()
+                                                "episode_num" -> epNum = json.nextInt()
+                                                "title" -> epTitle = json.nextString().orEmpty()
+                                                "container_extension" -> ext = json.nextString()
+                                                else -> json.skipValue()
+                                            }
+                                        }
+                                        json.endObject()
+                                        if (epId != 0L) {
+                                            list.add(com.retroguide.core.model.RawEpisode(epId, seasonNum, epNum, epTitle, ext))
+                                        }
+                                    }
+                                    json.endArray()
+                                } else {
+                                    json.skipValue()
+                                }
+                            }
+                            json.endObject()
+                        } else json.skipValue()
+                    }
+                    else -> json.skipValue()
+                }
+            }
+            json.endObject()
+        }
+        seasons.sort()
+        return com.retroguide.core.model.RawSeriesInfo(
+            seriesId = defaultSeriesId,
+            name = name,
+            cover = cover,
+            plot = plot,
+            seasons = seasons,
+            episodes = episodes,
+        )
     }
 }

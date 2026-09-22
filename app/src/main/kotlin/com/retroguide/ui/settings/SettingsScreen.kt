@@ -2,6 +2,7 @@ package com.retroguide.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +14,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,8 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -67,6 +70,13 @@ fun SettingsScreen(
 ) {
     val rules = ui.settings.rules
 
+    // Focus has to start on a row rather than on the screen: a D-pad move only searches the
+    // focused node's siblings, so rows underneath a focused ancestor can never be reached. The
+    // first row asks for focus once, when it first appears, and not again when scrolling brings
+    // it back into view.
+    val firstRow = remember { FocusRequester() }
+    var focusedOnce by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -88,7 +98,15 @@ fun SettingsScreen(
 
             // ------------------------------------------------------------ countries
             item { SectionHeading("Countries", theme) }
-            items(Country.entries.toList(), key = { it.code }) { country ->
+            itemsIndexed(Country.entries.toList(), key = { _, country -> country.code }) { index, country ->
+                if (index == 0) {
+                    LaunchedEffect(Unit) {
+                        if (!focusedOnce) {
+                            focusedOnce = true
+                            firstRow.requestFocus()
+                        }
+                    }
+                }
                 ToggleRow(
                     label = country.displayName,
                     checked = country in rules.countries,
@@ -103,6 +121,7 @@ fun SettingsScreen(
                         // Never leave the guide with nothing in it.
                         if (next.isNotEmpty()) onCountries(next)
                     },
+                    modifier = if (index == 0) Modifier.focusRequester(firstRow) else Modifier,
                 )
             }
 
@@ -257,11 +276,12 @@ private fun RowShell(
     onSelect: () -> Unit,
     onLeft: (() -> Unit)? = null,
     onRight: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     content: @Composable (focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
             .background(if (focused) theme.highlight else theme.panel)
@@ -294,8 +314,9 @@ private fun ToggleRow(
     theme: GuideTheme,
     onToggle: () -> Unit,
     detail: String? = null,
+    modifier: Modifier = Modifier,
 ) {
-    RowShell(theme = theme, onSelect = onToggle) { focused ->
+    RowShell(theme = theme, onSelect = onToggle, modifier = modifier) { focused ->
         val textColour = if (focused) theme.highlightText else theme.cellText
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

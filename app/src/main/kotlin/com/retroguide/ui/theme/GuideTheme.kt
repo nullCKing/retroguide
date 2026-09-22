@@ -35,6 +35,7 @@ data class GuideTheme(
     /** The slightly lighter navy the info panel and headers sit on. */
     val panel: Color = Color(0xFF0E2154),
     val panelEdge: Color = Color(0xFF2A4A94),
+    val panelSelected: Color = Color(0xFF1B3D8A),
 
     /** Programme cells, coloured by category. Movies are magenta, everything else blue. */
     val movieCell: Color = Color(0xFF962092),

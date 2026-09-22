@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -39,6 +40,8 @@ fun ChannelBanner(
     nowMs: Long,
     theme: GuideTheme,
     modifier: Modifier = Modifier,
+    logoUrl: String? = null,
+    isFavorite: Boolean = false,
 ) {
     Box(
         modifier = modifier
@@ -50,11 +53,21 @@ fun ChannelBanner(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
 
-            // Channel number, big, the way a banner leads with it.
-            Column(
-                modifier = Modifier.width(96.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            // Channel number & logo
+            Row(
+                modifier = Modifier.width(130.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (!logoUrl.isNullOrBlank()) {
+                    coil.compose.AsyncImage(
+                        model = logoUrl,
+                        contentDescription = name,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                    )
+                }
                 Text(
                     text = number.toString(),
                     color = theme.channelNumber,
@@ -64,18 +77,28 @@ fun ChannelBanner(
                 )
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    color = theme.infoTitle,
-                    fontSize = theme.detailSize,
-                    fontFamily = theme.fontFamily,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isFavorite) {
+                        Text(
+                            text = "★ ",
+                            color = theme.highlight,
+                            fontSize = theme.detailSize,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Text(
+                        text = name,
+                        color = theme.infoTitle,
+                        fontSize = theme.detailSize,
+                        fontFamily = theme.fontFamily,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = now?.title ?: "No Information",

@@ -53,12 +53,16 @@ class ChannelFilter(val rules: FilterRules = FilterRules.DEFAULT) {
         }
         if (local.isLocal) evidence.addAll(local.evidence)
 
+        val isStreaming = StreamingServiceDetector.isStreamingService(category.categoryName)
+        if (isStreaming) evidence.add("streaming service: category skipped")
+
         return CategoryVerdict(
             category = category,
             country = countryHit?.country,
             indicatesLocals = local.isLocal,
             market = local.market.takeIf { local.isLocal && it != Market.UNKNOWN },
             foreignMarker = foreign,
+            isStreamingService = isStreaming,
             evidence = evidence,
         )
     }
@@ -91,6 +95,14 @@ class ChannelFilter(val rules: FilterRules = FilterRules.DEFAULT) {
         val categoryTokens = categoryVerdict
             ?.let { Tokenizer.tokenize(it.category.categoryName) }
             ?: Tokens.EMPTY
+
+        if (StreamingServiceDetector.isStreamingService(raw.name) ||
+            StreamingServiceDetector.isStreamingService(categoryVerdict?.category?.categoryName)) {
+            return FilterDecision(
+                FilterOutcome.DROPPED_EXCLUDED_KEYWORD,
+                evidence = listOf("dropped streaming service"),
+            )
+        }
 
         // Free-text exclusions run first: they are the user's explicit veto.
         for (p in rules.excludePhrases) {

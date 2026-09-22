@@ -1,6 +1,7 @@
 package com.retroguide.domain
 
 import com.retroguide.core.epg.ProgramCategory
+import com.retroguide.core.filter.StreamingServiceDetector
 import com.retroguide.core.guide.GuideGeometry
 import com.retroguide.core.guide.ProgramSlot
 import com.retroguide.core.guide.TimeWindow
@@ -12,8 +13,11 @@ import com.retroguide.data.db.ChannelEntity
 import com.retroguide.data.db.RetroGuideDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import com.retroguide.data.db.FavoriteChannelEntity
+import com.retroguide.data.db.FavoriteCategoryEntity
 
 /** A channel row as the guide draws it. */
 data class GuideChannel(
@@ -25,6 +29,8 @@ data class GuideChannel(
     val logoUrl: String?,
     val country: Country?,
     val market: Market?,
+    val categoryId: String? = null,
+    val isFavorite: Boolean = false,
 )
 
 /**
@@ -39,18 +45,46 @@ class GuideRepository(private val db: RetroGuideDatabase) {
 
     /** The channel list for the current rules, as a flow so a rule change redraws the guide. */
     fun observeChannels(rules: FilterRules): Flow<List<GuideChannel>> =
-        db.channelDao()
-            .observeFiltered(
+        combine(
+            db.channelDao().observeFiltered(
                 countries = rules.countries.map(Country::code),
                 markets = rules.markets.map(Market::name),
-            )
-            .map { rows -> rows.filterNot { excluded(it, rules) }.map(::toGuideChannel) }
+            ),
+            db.favoritesDao().observeFavoriteChannelIds(),
+        ) { rows, favIds ->
+            val favSet = favIds.toSet()
+            rows.filterNot { excluded(it, rules) }.map { toGuideChannel(it, it.streamId in favSet) }
+        }
 
     suspend fun channels(rules: FilterRules): List<GuideChannel> = withContext(Dispatchers.IO) {
+        val favSet = db.favoritesDao().getFavoriteChannelIds().toSet()
         db.channelDao()
             .getFiltered(rules.countries.map(Country::code), rules.markets.map(Market::name))
             .filterNot { excluded(it, rules) }
-            .map(::toGuideChannel)
+            .map { toGuideChannel(it, it.streamId in favSet) }
+    }
+
+    suspend fun toggleFavoriteChannel(streamId: Long) = withContext(Dispatchers.IO) {
+        if (db.favoritesDao().isFavoriteChannel(streamId)) {
+            db.favoritesDao().removeFavoriteChannel(streamId)
+        } else {
+            db.favoritesDao().addFavoriteChannel(FavoriteChannelEntity(streamId))
+        }
+    }
+
+    suspend fun toggleFavoriteCategory(categoryId: String) = withContext(Dispatchers.IO) {
+        if (db.favoritesDao().isFavoriteCategory(categoryId)) {
+            db.favoritesDao().removeFavoriteCategory(categoryId)
+        } else {
+            db.favoritesDao().addFavoriteCategory(FavoriteCategoryEntity(categoryId))
+        }
+    }
+
+    fun observeFavoriteCategoryIds(): Flow<Set<String>> =
+        db.favoritesDao().observeFavoriteCategoryIds().map { it.toSet() }
+
+    suspend fun getFavoriteCategoryIds(): Set<String> = withContext(Dispatchers.IO) {
+        db.favoritesDao().getFavoriteCategoryIds().toSet()
     }
 
     /**
@@ -59,12 +93,15 @@ class GuideRepository(private val db: RetroGuideDatabase) {
      * It runs over the few hundred rows the query already returned, so the cost is invisible.
      */
     private fun excluded(row: ChannelEntity, rules: FilterRules): Boolean {
+        if (StreamingServiceDetector.isStreamingService(row.originalName)) return true
+        if (StreamingServiceDetector.isStreamingService(row.displayName)) return true
+        if (StreamingServiceDetector.isStreamingService(row.categoryName)) return true
         if (rules.excludePhrases.isEmpty()) return false
         val tokens = Tokenizer.tokenize(row.originalName)
         return rules.excludePhrases.any { tokens.hasPhrase(it) }
     }
 
-    private fun toGuideChannel(row: ChannelEntity) = GuideChannel(
+    private fun toGuideChannel(row: ChannelEntity, isFavorite: Boolean = false) = GuideChannel(
         streamId = row.streamId,
         number = row.number,
         name = row.displayName,
@@ -73,6 +110,8 @@ class GuideRepository(private val db: RetroGuideDatabase) {
         logoUrl = row.streamIcon,
         country = row.countryEnum,
         market = row.marketEnum,
+        categoryId = row.categoryId,
+        isFavorite = isFavorite,
     )
 
     /**

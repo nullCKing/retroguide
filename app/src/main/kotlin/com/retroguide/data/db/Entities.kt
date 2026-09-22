@@ -145,3 +145,18 @@ data class ChannelNumberEntity(
     @PrimaryKey val streamId: Long,
     val number: Int,
 )
+
+/** User's favorited individual channels. */
+@Entity(tableName = "favorite_channels")
+data class FavoriteChannelEntity(
+    @PrimaryKey val streamId: Long,
+    val addedAt: Long = System.currentTimeMillis(),
+)
+
+/** User's favorited channel groups / categories. */
+@Entity(tableName = "favorite_categories")
+data class FavoriteCategoryEntity(
+    @PrimaryKey val categoryId: String,
+    val addedAt: Long = System.currentTimeMillis(),
+)
+

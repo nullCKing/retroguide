@@ -27,3 +27,9 @@ reports/*.txt
 *.iml
 .vscode/
 .DS_Store
+
+# Kotlin 2.x compiler session files
+.kotlin/
+
+# Python bytecode from the mock server and discovery tool
+__pycache__/

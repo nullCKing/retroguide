@@ -46,10 +46,18 @@ class XmltvImporter(
         flow {
             emit(EpgProgress.Downloading)
 
-            val wanted = db.channelDao().all()
-                .mapNotNull { it.epgChannelId?.takeIf(String::isNotBlank) }
-                .toHashSet()
-            if (wanted.isEmpty()) {
+            val allChannels = db.channelDao().all()
+            val channelKeyMap = HashMap<String, String>()
+            for (ch in allChannels) {
+                channelKeyMap[ch.channelKey] = ch.channelKey
+                channelKeyMap[ch.streamId.toString()] = ch.channelKey
+                ch.epgChannelId?.takeIf(String::isNotBlank)?.let {
+                    channelKeyMap[it] = ch.channelKey
+                }
+                if (ch.originalName.isNotBlank()) channelKeyMap[ch.originalName] = ch.channelKey
+                if (ch.displayName.isNotBlank()) channelKeyMap[ch.displayName] = ch.channelKey
+            }
+            if (channelKeyMap.isEmpty()) {
                 emit(EpgProgress.Done(0, 0))
                 return@flow
             }
@@ -62,7 +70,7 @@ class XmltvImporter(
             val batch = ArrayList<ProgramEntity>(BATCH_SIZE)
 
             client.openXmltv().use { reader ->
-                parse(reader, wanted, from, to, manualOffsetHours * 60) { program ->
+                parse(reader, channelKeyMap, from, to, manualOffsetHours * 60) { program ->
                     seen++
                     if (program != null) {
                         batch.add(program)
@@ -90,7 +98,7 @@ class XmltvImporter(
      */
     private suspend fun parse(
         reader: Reader,
-        wantedChannels: Set<String>,
+        channelKeyMap: Map<String, String>,
         from: Long,
         to: Long,
         fallbackOffsetMinutes: Int,
@@ -107,7 +115,7 @@ class XmltvImporter(
                 // Cancellation is checked every so often rather than every tag: half a million
                 // iterations of a context lookup is measurable on a Stick.
                 if (++checks % 512 == 0) currentCoroutineContext().ensureActive()
-                onProgram(readProgramme(parser, wantedChannels, from, to, fallbackOffsetMinutes))
+                onProgram(readProgramme(parser, channelKeyMap, from, to, fallbackOffsetMinutes))
             }
             event = parser.next()
         }
@@ -121,16 +129,17 @@ class XmltvImporter(
      */
     private fun readProgramme(
         parser: XmlPullParser,
-        wantedChannels: Set<String>,
+        channelKeyMap: Map<String, String>,
         from: Long,
         to: Long,
         fallbackOffsetMinutes: Int,
     ): ProgramEntity? {
         val channel = parser.getAttributeValue(null, "channel")
+        val targetKey = channel?.let { channelKeyMap[it] }
         val start = XmltvTime.parse(parser.getAttributeValue(null, "start"), fallbackOffsetMinutes)
         val stop = XmltvTime.parse(parser.getAttributeValue(null, "stop"), fallbackOffsetMinutes)
 
-        val unwanted = channel == null || channel !in wantedChannels ||
+        val unwanted = targetKey == null ||
             start == null || stop == null || stop <= start ||
             stop <= from || start >= to
 
@@ -157,7 +166,7 @@ class XmltvImporter(
         }
 
         return ProgramEntity(
-            channelKey = channel,
+            channelKey = targetKey,
             startMs = start,
             endMs = stop,
             title = title.ifEmpty { UNTITLED },

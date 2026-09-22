@@ -16,18 +16,19 @@ DirecTV / Comcast cable box. Full build spec behind it; `PLAN.md` has the milest
    written down.
 3. **`README.md`** — build, test and run instructions.
 
-## The single most important fact
+## Where it stands
 
-**No Android code in this repo has ever been compiled.** It was written in an environment whose
-egress policy blocks `dl.google.com` and `maven.google.com`, so Gradle could not resolve a single
-dependency, and which had no hardware virtualisation, so no emulator could run.
+The source was written in an environment that could reach neither Google's Maven nor an emulator,
+so nothing Android-side was compiled until 2026-09-21. Since then: **`./gradlew build` is green**
+(107 `core` tests, seven Roborazzi screenshot tests, lint, debug and minified release APKs), and
+`tools/verify-on-device.ps1` has driven the whole app on an Android TV emulator against the mock
+server — sign-in, import, playback, banner, guide, settings, filter change. `PROGRESS.md` has the
+measurements and the exact list of what is still unverified: a real Fire TV Stick, a real Xtream
+account, and the comparison with the reference screenshots.
 
-The `core` module *is* tested — 107 unit tests pass — because it is plain Kotlin with no Android
-and no third-party dependencies, and was compiled with `kotlinc` directly.
-
-So: **`./gradlew build` is the first thing to run, and it will probably fail.** Expect compile
-errors. The likeliest cause is dependency versions that do not resolve; they are all in
-`gradle/libs.versions.toml`, one file. Fix what the compiler says before touching anything else.
+Building needs a JDK 17 or newer and an Android SDK (platform 35, build-tools 35.0.0) on
+`ANDROID_HOME`; `core` pins a JDK 17 toolchain and the Foojay plugin in `settings.gradle.kts`
+downloads one if the machine has none. The verify script installs the SDK and the emulator itself.
 
 ## Priorities from the spec
 
@@ -96,16 +97,19 @@ normal machine, use `./gradlew :core:test`.
 - **One ExoPlayer, ever.** Xtream accounts are commonly sold with a single connection, so a second
   player would lock the user out of their own service. The guide's preview and the full-screen
   view share one instance.
-- **The guide has never been seen by anyone.** It was built from written descriptions because the
-  reference screenshots were unreachable. If the user has them, compare and adjust —
-  `ui/theme/GuideTheme.kt` holds every colour, size and count in one place, and a screenshot test
-  proves changing it works.
+- **The guide has been seen on an emulator but never compared with the reference images.** It was
+  built from written descriptions because the reference screenshots were unreachable. If the user
+  has them, compare and adjust — `ui/theme/GuideTheme.kt` holds every colour, size and count in one
+  place, and a screenshot test proves changing it works.
 - **Never commit `secrets/`.** Credentials, the signing keystore and `keystore.properties` live
   there and it is gitignored. The signing key must never change, or updates stop installing over
   existing versions.
 
-## Measurements still to take
+## Measurements
 
-`PROGRESS.md` has a table with blanks for peak memory during import, peak memory with the guide
-open, time to first frame on a channel change, janky frame percentage, and the filter-change round
-trip. `tools/verify-on-device.ps1` collects all of them. Fill the table in when you have numbers.
+`PROGRESS.md` has the numbers from the emulator: peak memory after the import, time to first frame
+on a channel change, janky frame percentage while scrolling, and the filter-change round trip (the
+app logs the last two as `RetroPlayer` / `RetroGuideVM` lines that the verify script reads). The
+emulator renders in software, so treat its frame timing as a smoke test; the numbers that matter
+come from `.\tools\verify-on-device.ps1 -Device <ip>:5555` against a real Stick, which has not
+been done yet. Replace the table when you have them.

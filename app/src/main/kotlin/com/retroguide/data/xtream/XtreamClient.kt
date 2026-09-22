@@ -5,6 +5,10 @@ import com.retroguide.core.json.ShortEpgEntry
 import com.retroguide.core.json.XtreamParser
 import com.retroguide.core.model.RawCategory
 import com.retroguide.core.model.RawChannel
+import com.retroguide.core.model.RawVodStream
+import com.retroguide.core.model.RawVodInfo
+import com.retroguide.core.model.RawSeries
+import com.retroguide.core.model.RawSeriesInfo
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -168,9 +172,74 @@ class XtreamClient(
             readerFor(response).use { XtreamParser.streamChannels(it, onChannel) }
         }
 
-    fun shortEpg(streamId: Long, limit: Int = 4): List<ShortEpgEntry> =
-        execute(apiUrl("get_short_epg", mapOf("stream_id" to streamId.toString(), "limit" to limit.toString())))
-            .use { response -> readerFor(response).use { XtreamParser.parseShortEpg(it) } }
+    fun shortEpg(streamId: Long, limit: Int = 4): List<ShortEpgEntry> {
+        val first = runCatching {
+            execute(apiUrl("get_short_epg", mapOf("stream_id" to streamId.toString(), "limit" to limit.toString())))
+                .use { response -> readerFor(response).use { XtreamParser.parseShortEpg(it) } }
+        }.getOrNull().orEmpty()
+        if (first.isNotEmpty()) return first
+
+        return runCatching {
+            execute(apiUrl("get_simple_data_table", mapOf("stream_id" to streamId.toString())))
+                .use { response -> readerFor(response).use { XtreamParser.parseShortEpg(it) } }
+        }.getOrNull().orEmpty()
+    }
+
+    fun vodCategories(): List<RawCategory> =
+        execute(apiUrl("get_vod_categories")).use { response ->
+            readerFor(response).use { XtreamParser.parseCategories(it) }
+        }
+
+    fun vodStreams(categoryId: String? = null): List<RawVodStream> {
+        val params = if (categoryId != null) mapOf("category_id" to categoryId) else emptyMap()
+        return gzipRequest(apiUrl("get_vod_streams", params)).use { response ->
+            readerFor(response).use { XtreamParser.parseVodStreams(it) }
+        }
+    }
+
+    fun vodInfo(vodId: Long): RawVodInfo =
+        execute(apiUrl("get_vod_info", mapOf("vod_id" to vodId.toString()))).use { response ->
+            readerFor(response).use { XtreamParser.parseVodInfo(it, vodId) }
+        }
+
+    fun seriesCategories(): List<RawCategory> =
+        execute(apiUrl("get_series_categories")).use { response ->
+            readerFor(response).use { XtreamParser.parseCategories(it) }
+        }
+
+    fun series(categoryId: String? = null): List<RawSeries> {
+        val params = if (categoryId != null) mapOf("category_id" to categoryId) else emptyMap()
+        return gzipRequest(apiUrl("get_series", params)).use { response ->
+            readerFor(response).use { XtreamParser.parseSeries(it) }
+        }
+    }
+
+    fun seriesInfo(seriesId: Long): RawSeriesInfo =
+        execute(apiUrl("get_series_info", mapOf("series_id" to seriesId.toString()))).use { response ->
+            readerFor(response).use { XtreamParser.parseSeriesInfo(it, seriesId) }
+        }
+
+    fun vodStreamUrl(streamId: Long, containerExtension: String?): String {
+        val ext = containerExtension?.trimStart('.')?.ifBlank { "mp4" } ?: "mp4"
+        return base.newBuilder()
+            .addPathSegment("movie")
+            .addPathSegment(account.username)
+            .addPathSegment(account.password)
+            .addPathSegment("$streamId.$ext")
+            .build()
+            .toString()
+    }
+
+    fun seriesStreamUrl(streamId: Long, containerExtension: String?): String {
+        val ext = containerExtension?.trimStart('.')?.ifBlank { "mp4" } ?: "mp4"
+        return base.newBuilder()
+            .addPathSegment("series")
+            .addPathSegment(account.username)
+            .addPathSegment(account.password)
+            .addPathSegment("$streamId.$ext")
+            .build()
+            .toString()
+    }
 
     /**
      * Opens `xmltv.php` as a character stream.
@@ -205,7 +274,7 @@ class XtreamClient(
             .toString()
 
     companion object {
-        private const val USER_AGENT = "RetroGuide/1.0 (AndroidTV)"
+        private const val USER_AGENT = "IPTVSmartersPro/3.1.5 (AndroidTV)"
         private const val READ_BUFFER = 1 shl 16
 
         /**

@@ -156,3 +156,54 @@ Every non-obvious choice, with the reason. Newest section last.
 - **Cleartext HTTP is allowed**, because most Xtream panels have no TLS at all and refusing it
   would make the app useless for its purpose. The trade-off is stated on the login screen rather
   than buried: on such a server the credentials travel in the clear.
+
+## First build and first run on a device (2026-09-21)
+
+Everything above was written blind. This is what the first compile, the first screenshot tests
+and the first run on an Android TV emulator changed, and why.
+
+- **Foojay toolchain resolver in `settings.gradle.kts`.** `core` pins `jvmToolchain(17)`; the
+  build machine had JDK 21 and 23 but no 17, and Gradle refuses to build without a matching
+  toolchain unless a download repository is configured. The convention plugin lets Gradle fetch
+  one into `GRADLE_USER_HOME/jdks`, so the build works on any machine rather than only on one with
+  the right JDK preinstalled. Every dependency version in `libs.versions.toml` resolved as written.
+- **The release variant runs no JVM unit tests.** The only unit tests in `:app` are the Roborazzi
+  screenshot tests, and `createComposeRule()` needs the `ComponentActivity` that
+  `compose-ui-test-manifest` merges into the *debug* manifest. `testReleaseUnitTest` therefore
+  fails on a missing activity and proves nothing; `build` and `:app:testDebugUnitTest` run the same
+  seven tests once.
+- **Room's journal mode is set through the builder, not with a PRAGMA in `onOpen`.** Android's
+  `execSQL` throws for any statement that returns rows, and `PRAGMA journal_mode=WAL` returns one,
+  so the first database open crashed. `setJournalMode(WRITE_AHEAD_LOGGING)` also matters on the
+  target hardware: Room's `AUTOMATIC` mode falls back to TRUNCATE on a low-RAM device, which a 1 GB
+  stick is.
+- **The fill pass of the outlined cell text says `drawStyle = Fill` explicitly.** The measurer
+  caches one paragraph for both passes, `AndroidTextPaint.setDrawStyle(null)` is a no-op, and the
+  previous pass was the stroke — so every white title was drawn stroked too and unreadable. Seen
+  in the very first screenshot test.
+- **Login fields handle D-pad Up, Down and Select themselves.** `BasicTextField` reports Up and
+  Down as consumed even in a single-line field, so once the on-screen keyboard is dismissed a
+  remote can never leave the field. Select on the password field signs in, as the screen already
+  promised; on the other fields it brings the keyboard back.
+- **Focus starts on a Settings row, and the root only takes focus on Watching and the guide.**
+  A Compose D-pad move searches the focused node's siblings and never descends into its children,
+  so with the root `Box` holding focus nothing in Settings could be reached. The first row asks
+  for focus once when it first appears; not again when scrolling brings it back into view.
+- **The details dialog is modal.** The cursor used to keep moving under it.
+- **`onRenderedFirstFrame` is recorded once per tune.** It fires again on every surface change —
+  the preview window replacing the full-screen view, for one — and the extra lines were logged
+  against a stale tune time, which would have skewed the time-to-first-frame measurement.
+- **The filter round trip is timed inside the app**, from the toggle to the new channel list
+  arriving, and logged. The script's stopwatch around the same step measures its own key delays
+  and adb latency, not the query.
+- **`verify-on-device.ps1` switches the on-screen keyboards off for the run** and restores them at
+  the end. The Leanback keyboard opens as soon as a text field has focus and then swallows every
+  D-pad press, so all three typed strings landed in the server field. `input text` injects key
+  events and needs no keyboard. This is only about automation: a real remote types on that keyboard
+  and its Next and Done keys drive the IME actions the fields already handle.
+- **Screenshots are captured to `/sdcard` and pulled**, not redirected from `exec-out`. A
+  PowerShell 5.1 `>` decodes a native command's output as text and re-encodes it, which turned every
+  PNG into UTF-16 garbage.
+- **The script leaves and reopens the guide before its tuning step.** Right skips whole
+  programmes, so by then the window can be many hours ahead and Select would open the future-
+  programme dialog again; reopening the guide lands on the current half hour deterministically.

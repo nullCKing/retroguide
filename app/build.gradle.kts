@@ -114,6 +114,18 @@ android {
     }
 }
 
+/**
+ * The JVM unit tests are the Roborazzi screenshot tests, and they need the ComponentActivity that
+ * compose-ui-test-manifest adds to the debug manifest. Running them a second time against the
+ * release variant could only fail on that missing activity, so release skips them: `build` and
+ * `:app:testDebugUnitTest` run the same tests exactly once.
+ */
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { variant ->
+        variant.enableUnitTest = false
+    }
+}
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.incremental", "true")

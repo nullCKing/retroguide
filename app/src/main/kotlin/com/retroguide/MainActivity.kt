@@ -4,7 +4,9 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -18,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -29,14 +30,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.retroguide.ui.RetroGuideViewModel
 import com.retroguide.ui.Screen
+import com.retroguide.ui.categories.LiveCategoriesScreen
 import com.retroguide.ui.guide.GuideScreen
+import com.retroguide.ui.home.HomeScreen
 import com.retroguide.ui.login.ImportScreen
 import com.retroguide.ui.login.LoginScreen
 import com.retroguide.ui.player.WatchingOverlay
 import com.retroguide.ui.settings.SettingsScreen
+import com.retroguide.ui.vod.SeriesScreen
+import com.retroguide.ui.vod.VodScreen
 import com.retroguide.ui.theme.GuideTheme
 import com.retroguide.ui.theme.RetroGuideTheme
 import kotlinx.coroutines.delay
@@ -80,8 +86,14 @@ private fun RetroGuideRoot() {
         }
     }
 
+    // Watching and the guide have no focusable content of their own, so the root takes focus
+    // there to give key events somewhere to land. Login and settings put focus on their own
+    // fields and rows: a D-pad move never descends from a focused ancestor into its children,
+    // so if the root held focus on those screens nothing in them could be reached.
     LaunchedEffect(ui.screen) {
-        if (ui.screen != Screen.Login) focusRequester.requestFocus()
+        if (ui.screen == Screen.Watching || ui.screen == Screen.Guide) {
+            runCatching { focusRequester.requestFocus() }
+        }
     }
 
     RetroGuideTheme(theme) {
@@ -110,6 +122,30 @@ private fun RetroGuideRoot() {
                     detail = ui.importDetail,
                 )
 
+                Screen.Home -> HomeScreen(
+                    channelCount = ui.totalChannelCount,
+                    favoriteChannelCount = ui.favoriteChannelCount,
+                    nowMs = guide.nowMs,
+                    theme = theme,
+                    onNavigateLiveTv = viewModel::openLiveCategories,
+                    onNavigateMovies = viewModel::openVod,
+                    onNavigateSeries = viewModel::openSeries,
+                    onNavigateGuide = viewModel::openGuideDirect,
+                    onNavigateFavorites = viewModel::openFavoritesDirect,
+                    onNavigateSettings = viewModel::openSettings,
+                )
+
+                Screen.LiveCategories -> LiveCategoriesScreen(
+                    categories = ui.liveCategories,
+                    favoriteCategoryIds = ui.favoriteCategoryIds,
+                    totalChannelCount = ui.totalChannelCount,
+                    favoriteChannelCount = ui.favoriteChannelCount,
+                    categoryChannelCounts = ui.categoryChannelCounts,
+                    theme = theme,
+                    onSelectCategory = viewModel::selectLiveCategory,
+                    onToggleFavoriteCategory = viewModel::toggleFavoriteCategory,
+                )
+
                 Screen.Watching -> {
                     VideoSurface(Modifier.fillMaxSize())
                     WatchingOverlay(
@@ -126,6 +162,34 @@ private fun RetroGuideRoot() {
                     theme = theme,
                     previewContent = { modifier -> VideoSurface(modifier) },
                     modifier = Modifier.fillMaxSize(),
+                )
+
+                Screen.VodCategories -> VodScreen(
+                    categories = ui.vodCategories,
+                    movies = ui.vodMovies,
+                    selectedCategory = ui.selectedVodCategory,
+                    isLoadingMovies = ui.isLoadingVodMovies,
+                    selectedMovieInfo = ui.selectedVodInfo,
+                    isLoadingInfo = ui.isLoadingVodInfo,
+                    theme = theme,
+                    onSelectCategory = viewModel::selectVodCategory,
+                    onSelectMovie = viewModel::selectVodMovie,
+                    onPlayMovie = viewModel::playVod,
+                    onDismissDialog = viewModel::dismissVodDialog,
+                )
+
+                Screen.SeriesCategories -> SeriesScreen(
+                    categories = ui.seriesCategories,
+                    seriesList = ui.seriesList,
+                    selectedCategory = ui.selectedSeriesCategory,
+                    isLoadingSeries = ui.isLoadingSeries,
+                    selectedSeriesInfo = ui.selectedSeriesInfo,
+                    isLoadingInfo = ui.isLoadingSeriesInfo,
+                    theme = theme,
+                    onSelectCategory = viewModel::selectSeriesCategory,
+                    onSelectSeries = viewModel::selectSeries,
+                    onPlayEpisode = viewModel::playEpisode,
+                    onDismissDialog = viewModel::dismissSeriesDialog,
                 )
 
                 Screen.Settings -> SettingsScreen(
@@ -162,7 +226,11 @@ private fun RetroGuideRoot() {
  * Bound to the one shared ExoPlayer. Used both full-screen and as the guide's preview window: the
  * same player, never a second stream, because an Xtream account's connection limit is commonly one
  * and opening two would lock the user out of their own service.
+ *
+ * PlayerView's buffering, resize and keep-content setters are all @UnstableApi, hence the opt-in;
+ * it is scoped to this one composable so the rest of the UI stays off Media3's unstable surface.
  */
+@OptIn(UnstableApi::class)
 @Composable
 private fun VideoSurface(modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -201,6 +269,17 @@ private fun handleKey(
     if (event.type != KeyEventType.KeyDown) return false
 
     return when (screen) {
+        Screen.Home -> when (event.key) {
+            Key.Menu -> { viewModel.openSettings(); true }
+            else -> false
+        }
+
+        Screen.LiveCategories -> when (event.key) {
+            Key.Back, Key.Escape -> { viewModel.liveCategoriesBack(); true }
+            Key.Menu -> { viewModel.openSettings(); true }
+            else -> false
+        }
+
         Screen.Watching -> when (event.key) {
             Key.DirectionUp -> { viewModel.channelUp(); true }
             Key.DirectionDown -> { viewModel.channelDown(); true }
@@ -208,6 +287,7 @@ private fun handleKey(
             Key.Menu -> { viewModel.openSettings(); true }
             // The Fire remote has no number pad, so Play/Pause carries "last channel" instead.
             Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { viewModel.lastChannel(); true }
+            Key.Back, Key.Escape -> { viewModel.watchingBack(); true }
             else -> false
         }
 
@@ -219,9 +299,22 @@ private fun handleKey(
             Key.DirectionCenter, Key.Enter -> { viewModel.guideSelect(); true }
             Key.MediaRewind -> { viewModel.guidePageBack(); true }
             Key.MediaFastForward -> { viewModel.guidePageForward(); true }
+            Key.MediaPlayPause, Key.MediaPlay -> { viewModel.toggleFavoriteSelectedChannel(); true }
             Key.Menu -> { viewModel.openSettings(); true }
             // Back closes the details dialog first when one is open, and only then the guide.
             Key.Back, Key.Escape -> { viewModel.guideBack(); true }
+            else -> false
+        }
+
+        Screen.VodCategories -> when (event.key) {
+            Key.Back, Key.Escape -> { viewModel.vodBack(); true }
+            Key.Menu -> { viewModel.openSettings(); true }
+            else -> false
+        }
+
+        Screen.SeriesCategories -> when (event.key) {
+            Key.Back, Key.Escape -> { viewModel.seriesBack(); true }
+            Key.Menu -> { viewModel.openSettings(); true }
             else -> false
         }
 

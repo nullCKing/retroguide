@@ -146,6 +146,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories")
     suspend fun all(): List<CategoryEntity>
 
+    @Query("SELECT * FROM categories ORDER BY name ASC")
+    fun observeAll(): Flow<List<CategoryEntity>>
+
     @Query("SELECT * FROM categories WHERE imported = 0")
     suspend fun notYetImported(): List<CategoryEntity>
 
@@ -179,3 +182,38 @@ interface ChannelNumberDao {
     @Query("DELETE FROM channel_numbers")
     suspend fun clear()
 }
+
+@Dao
+interface FavoritesDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addFavoriteChannel(favorite: FavoriteChannelEntity)
+
+    @Query("DELETE FROM favorite_channels WHERE streamId = :streamId")
+    suspend fun removeFavoriteChannel(streamId: Long)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favorite_channels WHERE streamId = :streamId)")
+    suspend fun isFavoriteChannel(streamId: Long): Boolean
+
+    @Query("SELECT streamId FROM favorite_channels")
+    fun observeFavoriteChannelIds(): Flow<List<Long>>
+
+    @Query("SELECT streamId FROM favorite_channels")
+    suspend fun getFavoriteChannelIds(): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addFavoriteCategory(favorite: FavoriteCategoryEntity)
+
+    @Query("DELETE FROM favorite_categories WHERE categoryId = :categoryId")
+    suspend fun removeFavoriteCategory(categoryId: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favorite_categories WHERE categoryId = :categoryId)")
+    suspend fun isFavoriteCategory(categoryId: String): Boolean
+
+    @Query("SELECT categoryId FROM favorite_categories")
+    fun observeFavoriteCategoryIds(): Flow<List<String>>
+
+    @Query("SELECT categoryId FROM favorite_categories")
+    suspend fun getFavoriteCategoryIds(): List<String>
+}
+

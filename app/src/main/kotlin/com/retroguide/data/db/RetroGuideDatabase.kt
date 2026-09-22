@@ -12,8 +12,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProgramEntity::class,
         CategoryEntity::class,
         ChannelNumberEntity::class,
+        FavoriteChannelEntity::class,
+        FavoriteCategoryEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class RetroGuideDatabase : RoomDatabase() {
@@ -22,6 +24,7 @@ abstract class RetroGuideDatabase : RoomDatabase() {
     abstract fun programDao(): ProgramDao
     abstract fun categoryDao(): CategoryDao
     abstract fun channelNumberDao(): ChannelNumberDao
+    abstract fun favoritesDao(): FavoritesDao
 
     companion object {
         private const val NAME = "retroguide.db"
@@ -40,11 +43,14 @@ abstract class RetroGuideDatabase : RoomDatabase() {
                 // On a schema change, throwing it away and re-importing is both simpler and
                 // safer than migrating a table the user has no unique data in.
                 .fallbackToDestructiveMigration()
+                // Write-ahead logging keeps the guide readable while the EPG refresh is writing,
+                // which is the spec's "must stay usable during a refresh". Set here rather than
+                // with a PRAGMA in onOpen: Room's AUTOMATIC mode falls back to TRUNCATE on a
+                // low-RAM device, which a 1 GB stick is, and `execSQL("PRAGMA journal_mode=WAL")`
+                // throws on Android because that PRAGMA returns a row.
+                .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
-                        // Write-ahead logging keeps the guide readable while the EPG refresh is
-                        // writing, which is the spec's "must stay usable during a refresh".
-                        db.execSQL("PRAGMA journal_mode=WAL")
                         // A Fire Stick Lite has 1 GB of RAM for everything. The default 2 MB page
                         // cache is more than this workload needs; 1 MB keeps the footprint down
                         // without measurably hurting the windowed queries.

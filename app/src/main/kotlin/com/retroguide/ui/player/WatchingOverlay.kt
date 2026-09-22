@@ -85,6 +85,8 @@ fun WatchingOverlay(
                     next = banner.next,
                     nowMs = nowMs,
                     theme = theme,
+                    logoUrl = channel.logoUrl,
+                    isFavorite = channel.isFavorite,
                 )
             }
         }

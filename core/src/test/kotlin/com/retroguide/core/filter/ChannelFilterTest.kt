@@ -79,9 +79,17 @@ class ChannelFilterTest {
         for (s in listOf("JP| NHK G", "JPN: NHK G", "JAPAN NHK G", "[JP] NHK G")) {
             assertKept(s, Country.JP)
         }
-        for (s in listOf("KR| KBS 1", "KOR: KBS 1", "KOREA KBS 1", "SOUTH KOREA KBS 1")) {
+        for (s in listOf("KR| KBS 1", "KOR: KBS 1", "KOREA KBS 1", "SOUTH KOREA KBS 1", "SK| KBS 1")) {
             assertKept(s, Country.KR)
         }
+    }
+
+    @Test
+    fun `regional and foreign category prefixes are dropped`() {
+        assertDropped("GENERAL TV", categoryName = "AFR| GENERAL")
+        assertDropped("YUPP EXCLUSIVE", categoryName = "ASIA | YUPP TV EXCLUSIVE")
+        assertDropped("CARIBBEAN SPORTS", categoryName = "CRB| SPORTS")
+        assertDropped("LATINO NOVELA", categoryName = "LAT| GENERAL")
     }
 
     @Test
@@ -356,5 +364,44 @@ class ChannelFilterTest {
         assertTrue(ny.indicatesLocals)
         assertEquals(Market.NEW_YORK, ny.market)
         assertTrue(ny.mayContainKeptChannels(FilterRules.DEFAULT))
+    }
+
+    // ------------------------------------------------------------------ streaming services
+
+    @Test
+    fun `streaming service categories are never fetched`() {
+        val netflix = filter.classifyCategory(RawCategory("10", "US | NETFLIX"))
+        assertFalse(netflix.mayContainKeptChannels(FilterRules.DEFAULT))
+
+        val disneyPlus = filter.classifyCategory(RawCategory("11", "US | DISNEY+"))
+        assertFalse(disneyPlus.mayContainKeptChannels(FilterRules.DEFAULT))
+
+        val paramountPlus = filter.classifyCategory(RawCategory("12", "US | PARAMOUNT+"))
+        assertFalse(paramountPlus.mayContainKeptChannels(FilterRules.DEFAULT))
+
+        val hboMax = filter.classifyCategory(RawCategory("13", "US | HBO MAX"))
+        assertFalse(hboMax.mayContainKeptChannels(FilterRules.DEFAULT))
+    }
+
+    @Test
+    fun `streaming service channels are dropped while linear cable channels are kept`() {
+        // Streaming channels dropped
+        assertDropped("US| NETFLIX: Stranger Things")
+        assertDropped("US| DISNEY+: The Mandalorian")
+        assertDropped("US| PARAMOUNT+: Tulsa King")
+        assertDropped("US| HBO MAX: House of the Dragon")
+        assertDropped("US| PEACOCK: The Office")
+
+        // Real cable channels KEPT
+        assertKept("US| DISNEY CHANNEL EAST HD", Country.US)
+        assertKept("US| DISNEY JUNIOR", Country.US)
+        assertKept("US| DISNEY XD HD", Country.US)
+        assertKept("US| PARAMOUNT NETWORK HD", Country.US)
+        assertKept("US| HBO EAST HD", Country.US)
+        assertKept("US| HBO 2 HD", Country.US)
+        assertKept("US| HBO SIGNATURE", Country.US)
+        assertKept("US| ESPN HD", Country.US)
+        assertKept("US| ESPN 2", Country.US)
+        assertKept("US| ESPNU", Country.US)
     }
 }

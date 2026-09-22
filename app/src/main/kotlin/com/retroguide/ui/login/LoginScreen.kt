@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,9 +24,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -46,13 +55,26 @@ fun LoginScreen(
     error: String?,
     isSigningIn: Boolean,
     credentialsEncrypted: Boolean,
+    initialServer: String = "",
+    initialUsername: String = "",
+    initialPassword: String = "",
     onSubmit: (server: String, username: String, password: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var server by rememberSaveable { mutableStateOf("") }
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var server by rememberSaveable { mutableStateOf(initialServer) }
+    var username by rememberSaveable { mutableStateOf(initialUsername) }
+    var password by rememberSaveable { mutableStateOf(initialPassword) }
+
+    LaunchedEffect(initialServer, initialUsername, initialPassword) {
+        if (server.isEmpty() && initialServer.isNotEmpty()) server = initialServer
+        if (username.isEmpty() && initialUsername.isNotEmpty()) username = initialUsername
+        if (password.isEmpty() && initialPassword.isNotEmpty()) password = initialPassword
+    }
+
     val serverFocus = remember { FocusRequester() }
+
+    // A remote has no way to tap a field, so the cursor has to start somewhere useful.
+    LaunchedEffect(Unit) { serverFocus.requestFocus() }
 
     Box(
         modifier = modifier
@@ -155,6 +177,9 @@ private fun LabelledField(
     imeAction: ImeAction = ImeAction.Next,
     onDone: () -> Unit = {},
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = label,
@@ -190,7 +215,25 @@ private fun LabelledField(
                     imeAction = imeAction,
                 ),
                 keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // A text field swallows D-pad Up and Down as cursor movement, even with one
+                    // line, which on a remote means the user can never leave the field once the
+                    // on-screen keyboard is dismissed. These run first and hand the press to the
+                    // field only when there is no field in that direction. Select on the last
+                    // field signs in, as the screen says; elsewhere it brings the keyboard back.
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (event.key) {
+                            Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
+                            Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
+                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                if (imeAction == ImeAction.Done) onDone() else keyboard?.show()
+                                true
+                            }
+                            else -> false
+                        }
+                    },
             )
             if (value.isEmpty() && placeholder.isNotEmpty()) {
                 Text(
